@@ -1,8 +1,16 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
-const char* ssid     = "2wire609";
-const char* password = "2596639979";
+#ifndef WIFI_SSID
+#error "WIFI_SSID is not defined. Create platformio.secrets.ini from the example file."
+#endif
+
+#ifndef WIFI_PASSWORD
+#error "WIFI_PASSWORD is not defined. Create platformio.secrets.ini from the example file."
+#endif
+
+const char* ssid     = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 
 const int LED_PIN = 8; 
 

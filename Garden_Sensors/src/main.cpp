@@ -24,12 +24,20 @@ const char* password = WIFI_PASSWORD;
 const char* sensorApiEndpoint = SENSOR_API_ENDPOINT;
 const char* sensorApiToken = SENSOR_API_TOKEN;
 
-const bool USE_DUMMY_SENSOR_DATA = true;
+const bool USE_DUMMY_SENSOR_DATA = false;
 const unsigned long SENSOR_SEND_INTERVAL_MS = 60000;
 const char* DEVICE_ID = "esp32-c3-garden-01";
 
-const int LED_PIN = 8; 
+const int LED_PIN = 8;
+const int SOIL_MOISTURE_PIN = 0;
+const int AIR_VALUE = 3200;
+const int WATER_VALUE = 1500;
 unsigned long lastSensorSendMillis = 0;
+
+int soilMoisturePercentFromRaw(int rawValue) {
+  int percent = map(rawValue, AIR_VALUE, WATER_VALUE, 0, 100);
+  return constrain(percent, 0, 100);
+}
 
 void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
   switch (event) {
@@ -86,7 +94,7 @@ void setup() {
   Serial.println("\n[WiFi] Connection Complete!");
 }
 
-bool postSensorData(float temperature, float humidity, float batteryVoltage, unsigned long timestamp) {
+bool postSensorData(float temperature, float humidity, float batteryVoltage, float moisturePercent, unsigned long timestamp) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[HTTP] Skipping upload: WiFi is not connected.");
     return false;
@@ -111,6 +119,8 @@ bool postSensorData(float temperature, float humidity, float batteryVoltage, uns
   payload += "\"temperature\":" + String(temperature, 1) + ",";
   payload += "\"humidity\":" + String(humidity, 1) + ",";
   payload += "\"battery_voltage\":" + String(batteryVoltage, 2) + ",";
+  payload += "\"moisture_percent\":" + String(moisturePercent, 1) + ",";
+  payload += "\"soil_moisture_percent\":" + String(moisturePercent, 1) + ",";
   payload += "\"timestamp\":" + String(timestamp);
   payload += "}";
 
@@ -134,11 +144,19 @@ bool postSensorData(float temperature, float humidity, float batteryVoltage, uns
 
 void sendCurrentSensorReading() {
   const unsigned long timestamp = millis() / 1000;
-  const float temperature = USE_DUMMY_SENSOR_DATA ? 23.4f : 0.0f;
-  const float humidity = USE_DUMMY_SENSOR_DATA ? 65.2f : 0.0f;
-  const float batteryVoltage = USE_DUMMY_SENSOR_DATA ? 3.82f : 0.0f;
+  const int rawValue = analogRead(SOIL_MOISTURE_PIN);
+  const int moisturePercent = soilMoisturePercentFromRaw(rawValue);
+  const float temperature = 0.0f;
+  const float humidity = static_cast<float>(moisturePercent);
+  const float batteryVoltage = 0.0f;
 
-  if (postSensorData(temperature, humidity, batteryVoltage, timestamp)) {
+  Serial.print("[Soil Sensor] raw_adc=");
+  Serial.print(rawValue);
+  Serial.print(" moisture_percent=");
+  Serial.print(moisturePercent);
+  Serial.println("%");
+
+  if (postSensorData(temperature, humidity, batteryVoltage, static_cast<float>(moisturePercent), timestamp)) {
     lastSensorSendMillis = millis();
   }
 }

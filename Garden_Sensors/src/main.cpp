@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 
@@ -25,14 +27,18 @@ const char* sensorApiEndpoint = SENSOR_API_ENDPOINT;
 const char* sensorApiToken = SENSOR_API_TOKEN;
 
 const bool USE_DUMMY_SENSOR_DATA = false;
-const unsigned long SENSOR_SEND_INTERVAL_MS = 60000;
+const unsigned long SENSOR_SEND_INTERVAL_MS = 1000;
 const char* DEVICE_ID = "esp32-c3-garden-01";
 
 const int LED_PIN = 8;
 const int SOIL_MOISTURE_PIN = 0;
-const int AIR_VALUE = 3200;
+const int TEMP_SENSOR_PIN = 1;
+const int AIR_VALUE = 4000;
 const int WATER_VALUE = 1500;
 unsigned long lastSensorSendMillis = 0;
+
+OneWire oneWire(TEMP_SENSOR_PIN);
+DallasTemperature tempSensors(&oneWire);
 
 int soilMoisturePercentFromRaw(int rawValue) {
   int percent = map(rawValue, AIR_VALUE, WATER_VALUE, 0, 100);
@@ -63,6 +69,13 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 void setup() {
   Serial.begin(115200);
   delay(2000); 
+
+  analogReadResolution(12);
+  analogSetPinAttenuation(SOIL_MOISTURE_PIN, ADC_11db);
+
+  tempSensors.begin();
+  Serial.println("[DS18B20] Temperature sensor initialized!");
+
   pinMode(LED_PIN, OUTPUT);
 
   // Register event listener for detailed debugging
@@ -94,7 +107,7 @@ void setup() {
   Serial.println("\n[WiFi] Connection Complete!");
 }
 
-bool postSensorData(float temperature, float humidity, float batteryVoltage, float moisturePercent, unsigned long timestamp) {
+bool postSensorData(float temperature, float humidity, float batteryVoltage, float moisturePercent, int rawValue, float temperatureC, float temperatureF, bool tempSensorConnected, int temperatureSensorCount, unsigned long timestamp) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("[HTTP] Skipping upload: WiFi is not connected.");
     return false;
@@ -117,10 +130,21 @@ bool postSensorData(float temperature, float humidity, float batteryVoltage, flo
   payload += DEVICE_ID;
   payload += "\",";
   payload += "\"temperature\":" + String(temperature, 1) + ",";
+  payload += "\"temperature_c\":" + String(temperatureC, 2) + ",";
+  payload += "\"temperature_f\":" + String(temperatureF, 2) + ",";
+  payload += "\"temperature_sensor_pin\":" + String(TEMP_SENSOR_PIN) + ",";
+  payload += "\"temperature_sensor_connected\":" + String(tempSensorConnected ? "true" : "false") + ",";
+  payload += "\"temperature_sensor_count\":" + String(temperatureSensorCount) + ",";
   payload += "\"humidity\":" + String(humidity, 1) + ",";
   payload += "\"battery_voltage\":" + String(batteryVoltage, 2) + ",";
-  payload += "\"moisture_percent\":" + String(moisturePercent, 1) + ",";
-  payload += "\"soil_moisture_percent\":" + String(moisturePercent, 1) + ",";
+  payload += "\"moisture_sensor_raw_adc\":" + String(rawValue) + ",";
+  payload += "\"moisture_sensor_air_value\":" + String(AIR_VALUE) + ",";
+  payload += "\"moisture_sensor_water_value\":" + String(WATER_VALUE) + ",";
+  payload += "\"moisture_sensor_moisture_percent\":" + String(moisturePercent, 1) + ",";
+  payload += "\"moisture_sensor_percent\":" + String(moisturePercent, 1) + ",";
+  payload += "\"moisture_sensor_calibrated_percent\":" + String(moisturePercent, 1) + ",";
+  payload += "\"moisture_sensor_pin\":" + String(SOIL_MOISTURE_PIN) + ",";
+  payload += "\"moisture_sensor_reading_time_ms\":" + String(millis()) + ",";
   payload += "\"timestamp\":" + String(timestamp);
   payload += "}";
 
@@ -146,17 +170,39 @@ void sendCurrentSensorReading() {
   const unsigned long timestamp = millis() / 1000;
   const int rawValue = analogRead(SOIL_MOISTURE_PIN);
   const int moisturePercent = soilMoisturePercentFromRaw(rawValue);
-  const float temperature = 0.0f;
   const float humidity = static_cast<float>(moisturePercent);
   const float batteryVoltage = 0.0f;
 
+  tempSensors.requestTemperatures();
+  float temperatureC = tempSensors.getTempCByIndex(0);
+  float temperatureF = tempSensors.getTempFByIndex(0);
+  const bool tempSensorConnected = temperatureC != DEVICE_DISCONNECTED_C;
+  const int discoveredSensorCount = tempSensors.getDeviceCount() > 0 ? tempSensors.getDeviceCount() : (tempSensorConnected ? 1 : 0);
+
+  if (tempSensorConnected) {
+    Serial.print("[DS18B20] Temp: ");
+    Serial.print(temperatureC);
+    Serial.print(" C | ");
+    Serial.print(temperatureF);
+    Serial.print(" F | device_count=");
+    Serial.println(discoveredSensorCount);
+  } else {
+    Serial.println("[DS18B20] Could not read temperature data!");
+    temperatureC = -127.0f;
+    temperatureF = -196.6f;
+  }
+
   Serial.print("[Soil Sensor] raw_adc=");
   Serial.print(rawValue);
+  Serial.print(" air_value=");
+  Serial.print(AIR_VALUE);
+  Serial.print(" water_value=");
+  Serial.print(WATER_VALUE);
   Serial.print(" moisture_percent=");
   Serial.print(moisturePercent);
   Serial.println("%");
 
-  if (postSensorData(temperature, humidity, batteryVoltage, static_cast<float>(moisturePercent), timestamp)) {
+  if (postSensorData(temperatureC, humidity, batteryVoltage, static_cast<float>(moisturePercent), rawValue, temperatureC, temperatureF, tempSensorConnected, discoveredSensorCount, timestamp)) {
     lastSensorSendMillis = millis();
   }
 }

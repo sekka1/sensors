@@ -33,6 +33,22 @@
 #define SOIL_MOISTURE_PROBE_PRONE_OUTPUT_NAME "ENABLE_SOIL_MOISTURE_PROBE_PRONE"
 #endif
 
+#ifndef SOIL_MOISTURE_PROBE_1_AIR_VALUE
+#define SOIL_MOISTURE_PROBE_1_AIR_VALUE 3500
+#endif
+
+#ifndef SOIL_MOISTURE_PROBE_1_WATER_VALUE
+#define SOIL_MOISTURE_PROBE_1_WATER_VALUE 100
+#endif
+
+#ifndef SOIL_MOISTURE_PROBE_2_AIR_VALUE
+#define SOIL_MOISTURE_PROBE_2_AIR_VALUE 3480
+#endif
+
+#ifndef SOIL_MOISTURE_PROBE_2_WATER_VALUE
+#define SOIL_MOISTURE_PROBE_2_WATER_VALUE 50
+#endif
+
 #if ENABLE_TEMP_SENSOR_TO_92
 #include <Adafruit_SHT31.h>
 #include <Wire.h>
@@ -69,8 +85,10 @@ const char* soilMoistureOutputName = SOIL_MOISTURE_PROBE_PRONE_OUTPUT_NAME;
 
 #if ENABLE_SOIL_MOISTURE_PROBE_PRONE
 const unsigned long SOIL_MOISTURE_WARMUP_MS = 50;
-const int AIR_VALUE = 3500;
-const int WATER_VALUE = 100;
+const int PROBE_1_AIR_VALUE = SOIL_MOISTURE_PROBE_1_AIR_VALUE;
+const int PROBE_1_WATER_VALUE = SOIL_MOISTURE_PROBE_1_WATER_VALUE;
+const int PROBE_2_AIR_VALUE = SOIL_MOISTURE_PROBE_2_AIR_VALUE;
+const int PROBE_2_WATER_VALUE = SOIL_MOISTURE_PROBE_2_WATER_VALUE;
 #endif
 
 #if ENABLE_TEMP_SENSOR_TO_92
@@ -88,8 +106,8 @@ Adafruit_SHT31 tempSensor = Adafruit_SHT31();
 #endif
 
 #if ENABLE_SOIL_MOISTURE_PROBE_PRONE
-int soilMoisturePercentFromRaw(int rawValue) {
-  return calculateMoisturePercent(rawValue, AIR_VALUE, WATER_VALUE);
+int soilMoisturePercentFromRaw(int rawValue, int airValue, int waterValue) {
+  return calculateMoisturePercent(rawValue, airValue, waterValue);
 }
 
 int readSoilMoistureProbeRaw(int powerPin, int analogPin) {
@@ -258,16 +276,20 @@ bool postSensorData(
 
 #if ENABLE_SOIL_MOISTURE_PROBE_PRONE
   payload += "\"" + String(soilMoistureOutputName) + "_raw_adc\":" + String(probe1RawValue) + ",";
-  payload += "\"" + String(soilMoistureOutputName) + "_air_value\":" + String(AIR_VALUE) + ",";
-  payload += "\"" + String(soilMoistureOutputName) + "_water_value\":" + String(WATER_VALUE) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_air_value\":" + String(PROBE_1_AIR_VALUE) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_water_value\":" + String(PROBE_1_WATER_VALUE) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_moisture_percent\":" + String(probe1MoisturePercent) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_percent\":" + String(probe1MoisturePercent) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_calibrated_percent\":" + String(probe1MoisturePercent) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_probe_1_ao_pin\":" + String(SOIL_MOISTURE_PROBE_1_AO_PIN) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_probe_1_raw_adc\":" + String(probe1RawValue) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_1_air_value\":" + String(PROBE_1_AIR_VALUE) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_1_water_value\":" + String(PROBE_1_WATER_VALUE) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_probe_1_moisture_percent\":" + String(probe1MoisturePercent) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_probe_1_power_pin\":" + String(SOIL_MOISTURE_PROBE_1_POWER_PIN) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_probe_2_raw_adc\":" + String(probe2RawValue) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_2_air_value\":" + String(PROBE_2_AIR_VALUE) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_2_water_value\":" + String(PROBE_2_WATER_VALUE) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_probe_2_moisture_percent\":" + String(probe2MoisturePercent) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_probe_2_power_pin\":" + String(SOIL_MOISTURE_PROBE_2_POWER_PIN) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_probe_2_ao_pin\":" + String(SOIL_MOISTURE_PROBE_2_AO_PIN) + ",";
@@ -304,9 +326,9 @@ void sendCurrentSensorReading() {
 
 #if ENABLE_SOIL_MOISTURE_PROBE_PRONE
   probe1RawValue = readSoilMoistureProbeRaw(SOIL_MOISTURE_PROBE_1_POWER_PIN, SOIL_MOISTURE_PROBE_1_AO_PIN);
-  probe1MoisturePercent = soilMoisturePercentFromRaw(probe1RawValue);
+  probe1MoisturePercent = soilMoisturePercentFromRaw(probe1RawValue, PROBE_1_AIR_VALUE, PROBE_1_WATER_VALUE);
   probe2RawValue = readSoilMoistureProbeRaw(SOIL_MOISTURE_PROBE_2_POWER_PIN, SOIL_MOISTURE_PROBE_2_AO_PIN);
-  probe2MoisturePercent = soilMoisturePercentFromRaw(probe2RawValue);
+  probe2MoisturePercent = soilMoisturePercentFromRaw(probe2RawValue, PROBE_2_AIR_VALUE, PROBE_2_WATER_VALUE);
 #endif
 
   const float batteryVoltage = 0.0f;
@@ -347,9 +369,9 @@ void sendCurrentSensorReading() {
   Serial.print("[Soil Probe Prone 1] raw_adc=");
   Serial.print(probe1RawValue);
   Serial.print(" air_value=");
-  Serial.print(AIR_VALUE);
+  Serial.print(PROBE_1_AIR_VALUE);
   Serial.print(" water_value=");
-  Serial.print(WATER_VALUE);
+  Serial.print(PROBE_1_WATER_VALUE);
   Serial.print(" moisture_percent=");
   Serial.print(probe1MoisturePercent);
   Serial.println("%");
@@ -357,9 +379,9 @@ void sendCurrentSensorReading() {
   Serial.print("[Soil Probe Prone 2] raw_adc=");
   Serial.print(probe2RawValue);
   Serial.print(" air_value=");
-  Serial.print(AIR_VALUE);
+  Serial.print(PROBE_2_AIR_VALUE);
   Serial.print(" water_value=");
-  Serial.print(WATER_VALUE);
+  Serial.print(PROBE_2_WATER_VALUE);
   Serial.print(" moisture_percent=");
   Serial.print(probe2MoisturePercent);
   Serial.println("%");

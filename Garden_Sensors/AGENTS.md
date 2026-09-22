@@ -6,12 +6,24 @@ This project uses PlatformIO build-time environments to manage a single C/C++ co
 - No multi-codebase splitting: all code must exist in this repository.
 - Build flags over runtime flags: hardware capabilities are toggled exclusively at compile time using flags defined in platformio.ini.
 
+### Naming Propagation Rule
+If a sensor or feature is named in `platformio.ini`, that exact name must propagate into:
+
+- Compile-time feature naming in `src/main.cpp`.
+- JSON output field naming prefixes.
+- Documentation examples and matrices in this file.
+
+Current required names:
+
+- `ENABLE_SOIL_MOISTURE_PROBE_PRONE`
+- `temp_sensor_TO-92`
+
 ### Profile Composition Model
 PlatformIO configuration is split into reusable layers that are composed in each firmware profile:
 
 - `env:esp32_base`: board/framework/upload defaults and secret flags.
 - `flags:device_*`: per-device identity values (for example `DEVICE_ID`).
-- `flags:sensor_*`: sensor enable flags and sensor-specific pin mappings.
+- `flags:sensor_*`: sensor enable flags, output naming flags, and sensor-specific pin mappings.
 - `flags:board_common`: board-wide pins shared by profiles on the same hardware.
 - `env:node_*`: deployable profile that composes one device block plus one or more sensor blocks.
 
@@ -21,7 +33,7 @@ This keeps one codebase in `src/main.cpp` while allowing different firmware vari
 - Preprocessor isolation: all hardware drivers, library includes, globals, setup routines, and loop routines must be guarded by conditional preprocessor directives.
 
 ```cpp
-#if ENABLE_SHT31
+#if ENABLE_TEMP_SENSOR_TO_92
   #include <Adafruit_SHT31.h>
   // Driver logic
 #endif
@@ -64,6 +76,7 @@ Use this exact pattern when adding another physical node identity:
 [flags:device_<device_name>]
 build_flags =
     -D DEVICE_ID=\"<device-id-string>\"
+  -D SENSOR_SEND_INTERVAL_MS=<interval-ms>
 ```
 
 Then reference it from one or more `env:node_*` profiles via:
@@ -71,6 +84,16 @@ Then reference it from one or more `env:node_*` profiles via:
 ```ini
 ${flags:device_<device_name>.build_flags}
 ```
+
+### Output Naming Convention Rule (Required)
+For every enabled sensor feature, if an output name is declared in `platformio.ini`, that exact name must be used as the JSON key prefix in `src/main.cpp`.
+
+Current required output names:
+
+- `ENABLE_SOIL_MOISTURE_PROBE_PRONE`
+- `temp_sensor_TO-92`
+
+Do not shorten, lowercase, alias, or partially rename these in JSON keys.
 
 ### Required Touch Points Checklist
 When introducing a new sensor capability, update all applicable files:
@@ -167,10 +190,10 @@ Use this table to verify required pin flags per environment in platformio.ini.
 
 | Environment | ENABLE Flags | Required Pin Flags |
 | --- | --- | --- |
-| `env:node_sht31_soil` | `ENABLE_SHT31`, `ENABLE_SOIL_MOISTURE_PROBE_PRONE` | `LED_PIN`, `TEMP_SENSOR_SDA_PIN`, `TEMP_SENSOR_SCL_PIN`, `SOIL_MOISTURE_PROBE_1_POWER_PIN`, `SOIL_MOISTURE_PROBE_1_AO_PIN`, `SOIL_MOISTURE_PROBE_2_POWER_PIN`, `SOIL_MOISTURE_PROBE_2_AO_PIN` |
+| `env:node_sht31_soil` | `ENABLE_TEMP_SENSOR_TO_92`, `ENABLE_SOIL_MOISTURE_PROBE_PRONE` | `LED_PIN`, `TEMP_SENSOR_TO_92_SDA_PIN`, `TEMP_SENSOR_TO_92_SCL_PIN`, `SOIL_MOISTURE_PROBE_1_POWER_PIN`, `SOIL_MOISTURE_PROBE_1_AO_PIN`, `SOIL_MOISTURE_PROBE_2_POWER_PIN`, `SOIL_MOISTURE_PROBE_2_AO_PIN` |
 | `env:node_soil_probe_prone` | `ENABLE_SOIL_MOISTURE_PROBE_PRONE` | `LED_PIN`, `SOIL_MOISTURE_PROBE_1_POWER_PIN`, `SOIL_MOISTURE_PROBE_1_AO_PIN`, `SOIL_MOISTURE_PROBE_2_POWER_PIN`, `SOIL_MOISTURE_PROBE_2_AO_PIN` |
-| `env:node_sht31` | `ENABLE_SHT31` | `LED_PIN`, `TEMP_SENSOR_SDA_PIN`, `TEMP_SENSOR_SCL_PIN` |
-| `env:node_combo` | `ENABLE_SHT31`, `ENABLE_SOIL_MOISTURE_PROBE_PRONE` | `LED_PIN`, `TEMP_SENSOR_SDA_PIN`, `TEMP_SENSOR_SCL_PIN`, `SOIL_MOISTURE_PROBE_1_POWER_PIN`, `SOIL_MOISTURE_PROBE_1_AO_PIN`, `SOIL_MOISTURE_PROBE_2_POWER_PIN`, `SOIL_MOISTURE_PROBE_2_AO_PIN` |
+| `env:node_sht31` | `ENABLE_TEMP_SENSOR_TO_92` | `LED_PIN`, `TEMP_SENSOR_TO_92_SDA_PIN`, `TEMP_SENSOR_TO_92_SCL_PIN` |
+| `env:node_combo` | `ENABLE_TEMP_SENSOR_TO_92`, `ENABLE_SOIL_MOISTURE_PROBE_PRONE` | `LED_PIN`, `TEMP_SENSOR_TO_92_SDA_PIN`, `TEMP_SENSOR_TO_92_SCL_PIN`, `SOIL_MOISTURE_PROBE_1_POWER_PIN`, `SOIL_MOISTURE_PROBE_1_AO_PIN`, `SOIL_MOISTURE_PROBE_2_POWER_PIN`, `SOIL_MOISTURE_PROBE_2_AO_PIN` |
 
 ### Device Matrix (Current Profiles)
 Use this table to verify `DEVICE_ID` source per environment.

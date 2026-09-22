@@ -5,8 +5,8 @@
 #include "pins.h"
 #include "sensor_logic.h"
 
-#ifndef ENABLE_SHT31
-#define ENABLE_SHT31 0
+#ifndef ENABLE_TEMP_SENSOR_TO_92
+#define ENABLE_TEMP_SENSOR_TO_92 0
 #endif
 
 #ifndef ENABLE_SOIL_MOISTURE_PROBE_PRONE
@@ -21,13 +21,25 @@
 #define DEVICE_ID "unknown-device"
 #endif
 
-#if ENABLE_SHT31
+#ifndef SENSOR_SEND_INTERVAL_MS
+#define SENSOR_SEND_INTERVAL_MS 10000UL
+#endif
+
+#ifndef TEMP_SENSOR_TO_92_OUTPUT_NAME
+#define TEMP_SENSOR_TO_92_OUTPUT_NAME "temp_sensor_TO-92"
+#endif
+
+#ifndef SOIL_MOISTURE_PROBE_PRONE_OUTPUT_NAME
+#define SOIL_MOISTURE_PROBE_PRONE_OUTPUT_NAME "ENABLE_SOIL_MOISTURE_PROBE_PRONE"
+#endif
+
+#if ENABLE_TEMP_SENSOR_TO_92
 #include <Adafruit_SHT31.h>
 #include <Wire.h>
 #endif
 
-#if !ENABLE_SHT31 && !ENABLE_SOIL_MOISTURE_PROBE_PRONE
-#error "No sensors are enabled. Define at least one of ENABLE_SHT31 or ENABLE_SOIL_MOISTURE_PROBE_PRONE in the active PlatformIO environment."
+#if !ENABLE_TEMP_SENSOR_TO_92 && !ENABLE_SOIL_MOISTURE_PROBE_PRONE
+#error "No sensors are enabled. Define at least one of ENABLE_TEMP_SENSOR_TO_92 or ENABLE_SOIL_MOISTURE_PROBE_PRONE in the active PlatformIO environment."
 #endif
 
 #ifndef WIFI_SSID
@@ -52,8 +64,8 @@ const char* sensorApiEndpoint = SENSOR_API_ENDPOINT;
 const char* sensorApiToken = SENSOR_API_TOKEN;
 const char* sensorTypeName = SENSOR_TYPE_NAME;
 const char* deviceId = DEVICE_ID;
-
-const unsigned long SENSOR_SEND_INTERVAL_MS = 10000;
+const char* tempSensorOutputName = TEMP_SENSOR_TO_92_OUTPUT_NAME;
+const char* soilMoistureOutputName = SOIL_MOISTURE_PROBE_PRONE_OUTPUT_NAME;
 
 #if ENABLE_SOIL_MOISTURE_PROBE_PRONE
 const unsigned long SOIL_MOISTURE_WARMUP_MS = 50;
@@ -61,14 +73,14 @@ const int AIR_VALUE = 3500;
 const int WATER_VALUE = 100;
 #endif
 
-#if ENABLE_SHT31
+#if ENABLE_TEMP_SENSOR_TO_92
 const uint8_t TEMP_SENSOR_PRIMARY_ADDRESS = 0x44;
 const uint8_t TEMP_SENSOR_SECONDARY_ADDRESS = 0x45;
 #endif
 
 unsigned long lastSensorSendMillis = 0;
 
-#if ENABLE_SHT31
+#if ENABLE_TEMP_SENSOR_TO_92
 bool tempSensorAvailable = false;
 uint8_t tempSensorAddress = TEMP_SENSOR_PRIMARY_ADDRESS;
 
@@ -111,8 +123,8 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
 }
 
 bool initializeTempSensor() {
-#if ENABLE_SHT31
-  Wire.begin(TEMP_SENSOR_SDA_PIN, TEMP_SENSOR_SCL_PIN);
+#if ENABLE_TEMP_SENSOR_TO_92
+  Wire.begin(TEMP_SENSOR_TO_92_SDA_PIN, TEMP_SENSOR_TO_92_SCL_PIN);
 
   if (tempSensor.begin(TEMP_SENSOR_PRIMARY_ADDRESS)) {
     tempSensorAddress = TEMP_SENSOR_PRIMARY_ADDRESS;
@@ -140,7 +152,7 @@ void setup() {
   analogSetPinAttenuation(SOIL_MOISTURE_PROBE_2_AO_PIN, ADC_11db);
 #endif
 
-#if ENABLE_SHT31
+#if ENABLE_TEMP_SENSOR_TO_92
   tempSensorAvailable = initializeTempSensor();
   if (tempSensorAvailable) {
     Serial.print("[SHT31] Sensor initialized at 0x");
@@ -149,7 +161,7 @@ void setup() {
     Serial.println("[SHT31] Sensor not found on 0x44 or 0x45.");
   }
 #else
-  Serial.println("[SHT31] Disabled by build configuration.");
+  Serial.println("[temp_sensor_TO-92] Disabled by build configuration.");
 #endif
 
   pinMode(LED_PIN, OUTPUT);
@@ -230,37 +242,36 @@ bool postSensorData(
   payload += sensorTypeName;
   payload += "\",";
 
-#if ENABLE_SHT31
-  payload += "\"temperature\":" + String(temperatureC, 1) + ",";
-  payload += "\"temperature_c\":" + String(temperatureC, 2) + ",";
-  payload += "\"temperature_f\":" + String(temperatureF, 2) + ",";
-  payload += "\"temperature_sensor_sda_pin\":" + String(TEMP_SENSOR_SDA_PIN) + ",";
-  payload += "\"temperature_sensor_scl_pin\":" + String(TEMP_SENSOR_SCL_PIN) + ",";
-  payload += "\"temperature_sensor_i2c_address\":" + String(tempSensorAddress) + ",";
-  payload += "\"temperature_sensor_connected\":" + String(tempSensorConnected ? "true" : "false") + ",";
-  payload += "\"temperature_sensor_count\":" + String(temperatureSensorCount) + ",";
-  payload += "\"humidity\":" + String(humidity, 1) + ",";
+#if ENABLE_TEMP_SENSOR_TO_92
+  payload += "\"" + String(tempSensorOutputName) + "_temperature\":" + String(temperatureC, 1) + ",";
+  payload += "\"" + String(tempSensorOutputName) + "_temperature_c\":" + String(temperatureC, 2) + ",";
+  payload += "\"" + String(tempSensorOutputName) + "_temperature_f\":" + String(temperatureF, 2) + ",";
+  payload += "\"" + String(tempSensorOutputName) + "_sda_pin\":" + String(TEMP_SENSOR_TO_92_SDA_PIN) + ",";
+  payload += "\"" + String(tempSensorOutputName) + "_scl_pin\":" + String(TEMP_SENSOR_TO_92_SCL_PIN) + ",";
+  payload += "\"" + String(tempSensorOutputName) + "_i2c_address\":" + String(tempSensorAddress) + ",";
+  payload += "\"" + String(tempSensorOutputName) + "_connected\":" + String(tempSensorConnected ? "true" : "false") + ",";
+  payload += "\"" + String(tempSensorOutputName) + "_count\":" + String(temperatureSensorCount) + ",";
+  payload += "\"" + String(tempSensorOutputName) + "_humidity\":" + String(humidity, 1) + ",";
 #endif
 
   payload += "\"battery_voltage\":" + String(batteryVoltage, 2) + ",";
 
 #if ENABLE_SOIL_MOISTURE_PROBE_PRONE
-  payload += "\"moisture_sensor_raw_adc\":" + String(probe1RawValue) + ",";
-  payload += "\"moisture_sensor_air_value\":" + String(AIR_VALUE) + ",";
-  payload += "\"moisture_sensor_water_value\":" + String(WATER_VALUE) + ",";
-  payload += "\"moisture_sensor_moisture_percent\":" + String(probe1MoisturePercent) + ",";
-  payload += "\"moisture_sensor_percent\":" + String(probe1MoisturePercent) + ",";
-  payload += "\"moisture_sensor_calibrated_percent\":" + String(probe1MoisturePercent) + ",";
-  payload += "\"moisture_sensor_pin\":" + String(SOIL_MOISTURE_PROBE_1_AO_PIN) + ",";
-  payload += "\"moisture_probe_1_raw_adc\":" + String(probe1RawValue) + ",";
-  payload += "\"moisture_probe_1_moisture_percent\":" + String(probe1MoisturePercent) + ",";
-  payload += "\"moisture_probe_1_power_pin\":" + String(SOIL_MOISTURE_PROBE_1_POWER_PIN) + ",";
-  payload += "\"moisture_probe_1_ao_pin\":" + String(SOIL_MOISTURE_PROBE_1_AO_PIN) + ",";
-  payload += "\"moisture_probe_2_raw_adc\":" + String(probe2RawValue) + ",";
-  payload += "\"moisture_probe_2_moisture_percent\":" + String(probe2MoisturePercent) + ",";
-  payload += "\"moisture_probe_2_power_pin\":" + String(SOIL_MOISTURE_PROBE_2_POWER_PIN) + ",";
-  payload += "\"moisture_probe_2_ao_pin\":" + String(SOIL_MOISTURE_PROBE_2_AO_PIN) + ",";
-  payload += "\"moisture_sensor_reading_time_ms\":" + String(millis()) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_raw_adc\":" + String(probe1RawValue) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_air_value\":" + String(AIR_VALUE) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_water_value\":" + String(WATER_VALUE) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_moisture_percent\":" + String(probe1MoisturePercent) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_percent\":" + String(probe1MoisturePercent) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_calibrated_percent\":" + String(probe1MoisturePercent) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_1_ao_pin\":" + String(SOIL_MOISTURE_PROBE_1_AO_PIN) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_1_raw_adc\":" + String(probe1RawValue) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_1_moisture_percent\":" + String(probe1MoisturePercent) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_1_power_pin\":" + String(SOIL_MOISTURE_PROBE_1_POWER_PIN) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_2_raw_adc\":" + String(probe2RawValue) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_2_moisture_percent\":" + String(probe2MoisturePercent) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_2_power_pin\":" + String(SOIL_MOISTURE_PROBE_2_POWER_PIN) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_probe_2_ao_pin\":" + String(SOIL_MOISTURE_PROBE_2_AO_PIN) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_reading_time_ms\":" + String(millis()) + ",";
 #endif
 
   payload += "\"timestamp\":" + String(timestamp);
@@ -306,7 +317,7 @@ void sendCurrentSensorReading() {
   bool tempSensorConnected = false;
   int discoveredSensorCount = 0;
 
-#if ENABLE_SHT31
+#if ENABLE_TEMP_SENSOR_TO_92
   if (tempSensorAvailable) {
     temperatureC = tempSensor.readTemperature();
     humidity = tempSensor.readHumidity();
@@ -317,7 +328,7 @@ void sendCurrentSensorReading() {
   discoveredSensorCount = tempSensorConnected ? 1 : 0;
 
   if (tempSensorConnected) {
-    Serial.print("[SHT31] Temp: ");
+    Serial.print("[temp_sensor_TO-92] Temp: ");
     Serial.print(temperatureC);
     Serial.print(" C | ");
     Serial.print(temperatureF);
@@ -325,7 +336,7 @@ void sendCurrentSensorReading() {
     Serial.print(humidity);
     Serial.println("%");
   } else {
-    Serial.println("[SHT31] Could not read temperature/humidity data!");
+    Serial.println("[temp_sensor_TO-92] Could not read temperature/humidity data!");
     temperatureC = -127.0f;
     humidity = -1.0f;
     temperatureF = -196.6f;

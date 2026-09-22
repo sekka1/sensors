@@ -9,12 +9,16 @@
 #define ENABLE_SHT31 0
 #endif
 
-#ifndef ENABLE_SOIL_MOISTURE
-#define ENABLE_SOIL_MOISTURE 0
+#ifndef ENABLE_SOIL_MOISTURE_PROBE_PRONE
+#define ENABLE_SOIL_MOISTURE_PROBE_PRONE 0
 #endif
 
 #ifndef SENSOR_TYPE_NAME
 #define SENSOR_TYPE_NAME "UNSPECIFIED_NODE"
+#endif
+
+#ifndef DEVICE_ID
+#define DEVICE_ID "unknown-device"
 #endif
 
 #if ENABLE_SHT31
@@ -22,8 +26,8 @@
 #include <Wire.h>
 #endif
 
-#if !ENABLE_SHT31 && !ENABLE_SOIL_MOISTURE
-#error "No sensors are enabled. Define at least one of ENABLE_SHT31 or ENABLE_SOIL_MOISTURE in the active PlatformIO environment."
+#if !ENABLE_SHT31 && !ENABLE_SOIL_MOISTURE_PROBE_PRONE
+#error "No sensors are enabled. Define at least one of ENABLE_SHT31 or ENABLE_SOIL_MOISTURE_PROBE_PRONE in the active PlatformIO environment."
 #endif
 
 #ifndef WIFI_SSID
@@ -47,11 +51,11 @@ const char* password = WIFI_PASSWORD;
 const char* sensorApiEndpoint = SENSOR_API_ENDPOINT;
 const char* sensorApiToken = SENSOR_API_TOKEN;
 const char* sensorTypeName = SENSOR_TYPE_NAME;
+const char* deviceId = DEVICE_ID;
 
 const unsigned long SENSOR_SEND_INTERVAL_MS = 10000;
-const char* DEVICE_ID = "esp32-c3-garden-02";
 
-#if ENABLE_SOIL_MOISTURE
+#if ENABLE_SOIL_MOISTURE_PROBE_PRONE
 const unsigned long SOIL_MOISTURE_WARMUP_MS = 50;
 const int AIR_VALUE = 3500;
 const int WATER_VALUE = 100;
@@ -71,16 +75,16 @@ uint8_t tempSensorAddress = TEMP_SENSOR_PRIMARY_ADDRESS;
 Adafruit_SHT31 tempSensor = Adafruit_SHT31();
 #endif
 
-#if ENABLE_SOIL_MOISTURE
+#if ENABLE_SOIL_MOISTURE_PROBE_PRONE
 int soilMoisturePercentFromRaw(int rawValue) {
   return calculateMoisturePercent(rawValue, AIR_VALUE, WATER_VALUE);
 }
 
-int readSoilMoistureRaw() {
-  digitalWrite(SOIL_MOISTURE_POWER_PIN, HIGH);
+int readSoilMoistureProbeRaw(int powerPin, int analogPin) {
+  digitalWrite(powerPin, HIGH);
   delay(SOIL_MOISTURE_WARMUP_MS);
-  const int rawValue = analogRead(SOIL_MOISTURE_PIN);
-  digitalWrite(SOIL_MOISTURE_POWER_PIN, LOW);
+  const int rawValue = analogRead(analogPin);
+  digitalWrite(powerPin, LOW);
   return rawValue;
 }
 #endif
@@ -130,9 +134,10 @@ void setup() {
   Serial.begin(115200);
   delay(2000); 
 
-#if ENABLE_SOIL_MOISTURE
+#if ENABLE_SOIL_MOISTURE_PROBE_PRONE
   analogReadResolution(12);
-  analogSetPinAttenuation(SOIL_MOISTURE_PIN, ADC_11db);
+  analogSetPinAttenuation(SOIL_MOISTURE_PROBE_1_AO_PIN, ADC_11db);
+  analogSetPinAttenuation(SOIL_MOISTURE_PROBE_2_AO_PIN, ADC_11db);
 #endif
 
 #if ENABLE_SHT31
@@ -149,11 +154,13 @@ void setup() {
 
   pinMode(LED_PIN, OUTPUT);
 
-#if ENABLE_SOIL_MOISTURE
-  pinMode(SOIL_MOISTURE_POWER_PIN, OUTPUT);
-  digitalWrite(SOIL_MOISTURE_POWER_PIN, LOW);
+#if ENABLE_SOIL_MOISTURE_PROBE_PRONE
+  pinMode(SOIL_MOISTURE_PROBE_1_POWER_PIN, OUTPUT);
+  pinMode(SOIL_MOISTURE_PROBE_2_POWER_PIN, OUTPUT);
+  digitalWrite(SOIL_MOISTURE_PROBE_1_POWER_PIN, LOW);
+  digitalWrite(SOIL_MOISTURE_PROBE_2_POWER_PIN, LOW);
 #else
-  Serial.println("[Soil Sensor] Disabled by build configuration.");
+  Serial.println("[Soil Moisture Probe Prone] Disabled by build configuration.");
 #endif
 
   // Register event listener for detailed debugging
@@ -191,8 +198,10 @@ bool postSensorData(
   float humidity,
   bool tempSensorConnected,
   int temperatureSensorCount,
-  int rawValue,
-  int moisturePercent,
+  int probe1RawValue,
+  int probe1MoisturePercent,
+  int probe2RawValue,
+  int probe2MoisturePercent,
   float batteryVoltage,
   unsigned long timestamp
 ) {
@@ -215,7 +224,7 @@ bool postSensorData(
 
   String payload = "{";
   payload += "\"device_id\":\"";
-  payload += DEVICE_ID;
+  payload += deviceId;
   payload += "\",";
   payload += "\"sensor_type\":\"";
   payload += sensorTypeName;
@@ -235,14 +244,22 @@ bool postSensorData(
 
   payload += "\"battery_voltage\":" + String(batteryVoltage, 2) + ",";
 
-#if ENABLE_SOIL_MOISTURE
-  payload += "\"moisture_sensor_raw_adc\":" + String(rawValue) + ",";
+#if ENABLE_SOIL_MOISTURE_PROBE_PRONE
+  payload += "\"moisture_sensor_raw_adc\":" + String(probe1RawValue) + ",";
   payload += "\"moisture_sensor_air_value\":" + String(AIR_VALUE) + ",";
   payload += "\"moisture_sensor_water_value\":" + String(WATER_VALUE) + ",";
-  payload += "\"moisture_sensor_moisture_percent\":" + String(moisturePercent) + ",";
-  payload += "\"moisture_sensor_percent\":" + String(moisturePercent) + ",";
-  payload += "\"moisture_sensor_calibrated_percent\":" + String(moisturePercent) + ",";
-  payload += "\"moisture_sensor_pin\":" + String(SOIL_MOISTURE_PIN) + ",";
+  payload += "\"moisture_sensor_moisture_percent\":" + String(probe1MoisturePercent) + ",";
+  payload += "\"moisture_sensor_percent\":" + String(probe1MoisturePercent) + ",";
+  payload += "\"moisture_sensor_calibrated_percent\":" + String(probe1MoisturePercent) + ",";
+  payload += "\"moisture_sensor_pin\":" + String(SOIL_MOISTURE_PROBE_1_AO_PIN) + ",";
+  payload += "\"moisture_probe_1_raw_adc\":" + String(probe1RawValue) + ",";
+  payload += "\"moisture_probe_1_moisture_percent\":" + String(probe1MoisturePercent) + ",";
+  payload += "\"moisture_probe_1_power_pin\":" + String(SOIL_MOISTURE_PROBE_1_POWER_PIN) + ",";
+  payload += "\"moisture_probe_1_ao_pin\":" + String(SOIL_MOISTURE_PROBE_1_AO_PIN) + ",";
+  payload += "\"moisture_probe_2_raw_adc\":" + String(probe2RawValue) + ",";
+  payload += "\"moisture_probe_2_moisture_percent\":" + String(probe2MoisturePercent) + ",";
+  payload += "\"moisture_probe_2_power_pin\":" + String(SOIL_MOISTURE_PROBE_2_POWER_PIN) + ",";
+  payload += "\"moisture_probe_2_ao_pin\":" + String(SOIL_MOISTURE_PROBE_2_AO_PIN) + ",";
   payload += "\"moisture_sensor_reading_time_ms\":" + String(millis()) + ",";
 #endif
 
@@ -269,12 +286,16 @@ bool postSensorData(
 
 void sendCurrentSensorReading() {
   const unsigned long timestamp = millis() / 1000;
-  int rawValue = -1;
-  int moisturePercent = -1;
+  int probe1RawValue = -1;
+  int probe1MoisturePercent = -1;
+  int probe2RawValue = -1;
+  int probe2MoisturePercent = -1;
 
-#if ENABLE_SOIL_MOISTURE
-  rawValue = readSoilMoistureRaw();
-  moisturePercent = soilMoisturePercentFromRaw(rawValue);
+#if ENABLE_SOIL_MOISTURE_PROBE_PRONE
+  probe1RawValue = readSoilMoistureProbeRaw(SOIL_MOISTURE_PROBE_1_POWER_PIN, SOIL_MOISTURE_PROBE_1_AO_PIN);
+  probe1MoisturePercent = soilMoisturePercentFromRaw(probe1RawValue);
+  probe2RawValue = readSoilMoistureProbeRaw(SOIL_MOISTURE_PROBE_2_POWER_PIN, SOIL_MOISTURE_PROBE_2_AO_PIN);
+  probe2MoisturePercent = soilMoisturePercentFromRaw(probe2RawValue);
 #endif
 
   const float batteryVoltage = 0.0f;
@@ -311,19 +332,29 @@ void sendCurrentSensorReading() {
   }
 #endif
 
-#if ENABLE_SOIL_MOISTURE
-  Serial.print("[Soil Sensor] raw_adc=");
-  Serial.print(rawValue);
+#if ENABLE_SOIL_MOISTURE_PROBE_PRONE
+  Serial.print("[Soil Probe Prone 1] raw_adc=");
+  Serial.print(probe1RawValue);
   Serial.print(" air_value=");
   Serial.print(AIR_VALUE);
   Serial.print(" water_value=");
   Serial.print(WATER_VALUE);
   Serial.print(" moisture_percent=");
-  Serial.print(moisturePercent);
+  Serial.print(probe1MoisturePercent);
+  Serial.println("%");
+
+  Serial.print("[Soil Probe Prone 2] raw_adc=");
+  Serial.print(probe2RawValue);
+  Serial.print(" air_value=");
+  Serial.print(AIR_VALUE);
+  Serial.print(" water_value=");
+  Serial.print(WATER_VALUE);
+  Serial.print(" moisture_percent=");
+  Serial.print(probe2MoisturePercent);
   Serial.println("%");
 #endif
 
-  if (postSensorData(temperatureC, temperatureF, humidity, tempSensorConnected, discoveredSensorCount, rawValue, moisturePercent, batteryVoltage, timestamp)) {
+  if (postSensorData(temperatureC, temperatureF, humidity, tempSensorConnected, discoveredSensorCount, probe1RawValue, probe1MoisturePercent, probe2RawValue, probe2MoisturePercent, batteryVoltage, timestamp)) {
     lastSensorSendMillis = millis();
   }
 }

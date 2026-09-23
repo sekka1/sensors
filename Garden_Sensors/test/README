@@ -9,7 +9,7 @@ This directory contains test suites for the Garden Sensors firmware.
 
 Run embedded profile builds:
 
-~/.platformio/penv/bin/platformio run -e node_sht31_soil -e node_soil_probe_prone -e node_sht31 -e node_combo
+~/.platformio/penv/bin/platformio run -e node_soil_probe_prone -e node_soil_probe_prone_only -e node_sht31 -e node_combo -e node_soil_capacitive
 
 Run native unit tests:
 

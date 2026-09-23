@@ -116,7 +116,7 @@ Before completing any task or pull request, run all checks:
 - Compile all embedded target environments:
 
 ```sh
-~/.platformio/penv/bin/platformio run -e node_sht31_soil -e node_soil_probe_prone -e node_sht31 -e node_combo
+~/.platformio/penv/bin/platformio run -e node_soil_probe_prone -e node_soil_probe_prone_only -e node_sht31 -e node_combo -e node_soil_capacitive
 ```
 
 - Run desktop unit tests:
@@ -194,20 +194,22 @@ Use this table to verify required pin flags per environment in platformio.ini.
 
 | Environment | ENABLE Flags | Required Pin Flags |
 | --- | --- | --- |
-| `env:node_sht31_soil` | `ENABLE_TEMP_SENSOR_TO_92`, `ENABLE_SOIL_MOISTURE_PROBE_PRONE` | `LED_PIN`, `TEMP_SENSOR_TO_92_SDA_PIN`, `TEMP_SENSOR_TO_92_SCL_PIN`, `SOIL_MOISTURE_PROBE_1_POWER_PIN`, `SOIL_MOISTURE_PROBE_1_AO_PIN`, `SOIL_MOISTURE_PROBE_1_AIR_VALUE`, `SOIL_MOISTURE_PROBE_1_WATER_VALUE`, `SOIL_MOISTURE_PROBE_2_POWER_PIN`, `SOIL_MOISTURE_PROBE_2_AO_PIN`, `SOIL_MOISTURE_PROBE_2_AIR_VALUE`, `SOIL_MOISTURE_PROBE_2_WATER_VALUE` |
-| `env:node_soil_probe_prone` | `ENABLE_SOIL_MOISTURE_PROBE_PRONE` | `LED_PIN`, `SOIL_MOISTURE_PROBE_1_POWER_PIN`, `SOIL_MOISTURE_PROBE_1_AO_PIN`, `SOIL_MOISTURE_PROBE_1_AIR_VALUE`, `SOIL_MOISTURE_PROBE_1_WATER_VALUE`, `SOIL_MOISTURE_PROBE_2_POWER_PIN`, `SOIL_MOISTURE_PROBE_2_AO_PIN`, `SOIL_MOISTURE_PROBE_2_AIR_VALUE`, `SOIL_MOISTURE_PROBE_2_WATER_VALUE` |
+| `env:node_soil_probe_prone` | `ENABLE_TEMP_SENSOR_TO_92`, `ENABLE_SOIL_MOISTURE_PROBE_PRONE` | `LED_PIN`, `TEMP_SENSOR_TO_92_SDA_PIN`, `TEMP_SENSOR_TO_92_SCL_PIN`, `SOIL_MOISTURE_PROBE_1_POWER_PIN`, `SOIL_MOISTURE_PROBE_1_AO_PIN`, `SOIL_MOISTURE_PROBE_1_AIR_VALUE`, `SOIL_MOISTURE_PROBE_1_WATER_VALUE`, `SOIL_MOISTURE_PROBE_2_POWER_PIN`, `SOIL_MOISTURE_PROBE_2_AO_PIN`, `SOIL_MOISTURE_PROBE_2_AIR_VALUE`, `SOIL_MOISTURE_PROBE_2_WATER_VALUE` |
+| `env:node_soil_probe_prone_only` | `ENABLE_SOIL_MOISTURE_PROBE_PRONE` | `LED_PIN`, `SOIL_MOISTURE_PROBE_1_POWER_PIN`, `SOIL_MOISTURE_PROBE_1_AO_PIN`, `SOIL_MOISTURE_PROBE_1_AIR_VALUE`, `SOIL_MOISTURE_PROBE_1_WATER_VALUE`, `SOIL_MOISTURE_PROBE_2_POWER_PIN`, `SOIL_MOISTURE_PROBE_2_AO_PIN`, `SOIL_MOISTURE_PROBE_2_AIR_VALUE`, `SOIL_MOISTURE_PROBE_2_WATER_VALUE` |
 | `env:node_sht31` | `ENABLE_TEMP_SENSOR_TO_92` | `LED_PIN`, `TEMP_SENSOR_TO_92_SDA_PIN`, `TEMP_SENSOR_TO_92_SCL_PIN` |
 | `env:node_combo` | `ENABLE_TEMP_SENSOR_TO_92`, `ENABLE_SOIL_MOISTURE_PROBE_PRONE` | `LED_PIN`, `TEMP_SENSOR_TO_92_SDA_PIN`, `TEMP_SENSOR_TO_92_SCL_PIN`, `SOIL_MOISTURE_PROBE_1_POWER_PIN`, `SOIL_MOISTURE_PROBE_1_AO_PIN`, `SOIL_MOISTURE_PROBE_1_AIR_VALUE`, `SOIL_MOISTURE_PROBE_1_WATER_VALUE`, `SOIL_MOISTURE_PROBE_2_POWER_PIN`, `SOIL_MOISTURE_PROBE_2_AO_PIN`, `SOIL_MOISTURE_PROBE_2_AIR_VALUE`, `SOIL_MOISTURE_PROBE_2_WATER_VALUE` |
+| `env:node_soil_capacitive` | `ENABLE_SOIL_MOISTURE_CAPACITIVE` | `LED_PIN`, `SOIL_MOISTURE_CAPACITIVE_POWER_PIN`, `SOIL_MOISTURE_CAPACITIVE_AO_PIN`, `SOIL_MOISTURE_CAPACITIVE_AIR_VALUE`, `SOIL_MOISTURE_CAPACITIVE_WATER_VALUE` |
 
 ### Device Matrix (Current Profiles)
 Use this table to verify `DEVICE_ID` source per environment.
 
 | Environment | Device Flag Section | Required Device Build Flag |
 | --- | --- | --- |
-| `env:node_sht31_soil` | `flags:device_esp32_c3_garden_02` | `DEVICE_ID=\"esp32-c3-garden-02\"` |
 | `env:node_soil_probe_prone` | `flags:device_esp32_c3_garden_02` | `DEVICE_ID=\"esp32-c3-garden-02\"` |
+| `env:node_soil_probe_prone_only` | `flags:device_esp32_c3_garden_02` | `DEVICE_ID=\"esp32-c3-garden-02\"` |
 | `env:node_sht31` | `flags:device_esp32_c3_garden_02` | `DEVICE_ID=\"esp32-c3-garden-02\"` |
 | `env:node_combo` | `flags:device_esp32_c3_garden_02` | `DEVICE_ID=\"esp32-c3-garden-02\"` |
+| `env:node_soil_capacitive` | `flags:device_esp32_c3_garden_03` | `DEVICE_ID=\"esp32-c3-garden-03\"` |
 
 Matrix update rule:
 - If a profile enables a sensor, define all pins used by that sensor in the profile's build_flags.

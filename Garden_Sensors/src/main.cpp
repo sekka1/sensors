@@ -101,7 +101,16 @@ const char* soilMoistureOutputName = SOIL_MOISTURE_PROBE_PRONE_OUTPUT_NAME;
 const char* soilMoistureCapacitiveOutputName = SOIL_MOISTURE_CAPACITIVE_OUTPUT_NAME;
 
 #if ENABLE_SOIL_MOISTURE_PROBE_PRONE || ENABLE_SOIL_MOISTURE_CAPACITIVE
-const unsigned long SOIL_MOISTURE_WARMUP_MS = 50;
+// Per-sensor warm-up (ms) between powering on and sampling; override in platformio.ini
+#ifndef SOIL_MOISTURE_PROBE_1_WARMUP_MS
+  #define SOIL_MOISTURE_PROBE_1_WARMUP_MS 500
+#endif
+#ifndef SOIL_MOISTURE_PROBE_2_WARMUP_MS
+  #define SOIL_MOISTURE_PROBE_2_WARMUP_MS 500
+#endif
+#ifndef SOIL_MOISTURE_CAPACITIVE_WARMUP_MS
+  #define SOIL_MOISTURE_CAPACITIVE_WARMUP_MS 1000
+#endif
 #endif
 
 #if ENABLE_SOIL_MOISTURE_PROBE_PRONE
@@ -135,9 +144,9 @@ int soilMoisturePercentFromRaw(int rawValue, int airValue, int waterValue) {
   return calculateMoisturePercent(rawValue, airValue, waterValue);
 }
 
-int readPoweredAnalogRaw(int powerPin, int analogPin) {
+int readPoweredAnalogRaw(int powerPin, int analogPin, unsigned long warmupMs) {
   digitalWrite(powerPin, HIGH);
-  delay(SOIL_MOISTURE_WARMUP_MS);
+  delay(warmupMs);
   const int rawValue = analogRead(analogPin);
   digitalWrite(powerPin, LOW);
   return rawValue;
@@ -240,23 +249,51 @@ void setup() {
 
   // Critical fixes for ESP32-C3 SuperMini boards:
   // 1. Disable Wi-Fi power saving
-  WiFi.setSleep(false); 
-  // 2. Reduce TX power slightly to prevent RF power spikes on small ceramic antennas
-  WiFi.setTxPower(WIFI_POWER_8_5dBm); 
+  WiFi.setSleep(false);
+  // 2. Moderate TX power. Too low (8.5dBm) weakens the directed probe requests
+  //    needed to find a hidden SSID, causing reason 201 (NO_AP_FOUND).
+  WiFi.setTxPower(WIFI_POWER_15dBm);
+  // 3. Scan all channels and prefer the strongest AP when several share the SSID
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
 
   Serial.print("Connecting to ");
   Serial.println(ssid);
 
-  WiFi.begin(ssid, password);
-
+  // Hidden SSID: retry a fresh attempt periodically, restart if it never works.
+  const uint32_t ATTEMPT_TIMEOUT_MS = 15000;
+  const int MAX_ATTEMPTS = 8;
+  int attempt = 0;
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-    digitalWrite(LED_PIN, !digitalRead(LED_PIN)); 
+    if (attempt >= MAX_ATTEMPTS) {
+      Serial.println("\n[WiFi] Giving up, restarting...");
+      ESP.restart();
+    }
+    attempt++;
+    Serial.printf("\n[WiFi] Attempt %d/%d\n", attempt, MAX_ATTEMPTS);
+    WiFi.disconnect(true);
+    delay(200);
+#ifdef WIFI_CHANNEL
+    // Fixed channel skips the all-channel scan: much more reliable for hidden SSIDs
+    WiFi.begin(ssid, password, WIFI_CHANNEL);
+#else
+    WiFi.begin(ssid, password);
+#endif
+    uint32_t start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < ATTEMPT_TIMEOUT_MS) {
+      delay(500);
+      Serial.print(".");
+      digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+    }
   }
 
   digitalWrite(LED_PIN, LOW); 
   Serial.println("\n[WiFi] Connection Complete!");
+
+  // Force the ESP32 to query Cloudflare's DNS
+  IPAddress dns1(1, 1, 1, 1);
+  IPAddress dns2(8, 8, 8, 8);
+  WiFi.config(WiFi.localIP(), WiFi.gatewayIP(), WiFi.subnetMask(), dns1, dns2);
 }
 
 bool postSensorData(
@@ -381,14 +418,14 @@ void sendCurrentSensorReading() {
   int capacitiveMoisturePercent = -1;
 
 #if ENABLE_SOIL_MOISTURE_PROBE_PRONE
-  probe1RawValue = readPoweredAnalogRaw(SOIL_MOISTURE_PROBE_1_POWER_PIN, SOIL_MOISTURE_PROBE_1_AO_PIN);
+  probe1RawValue = readPoweredAnalogRaw(SOIL_MOISTURE_PROBE_1_POWER_PIN, SOIL_MOISTURE_PROBE_1_AO_PIN, SOIL_MOISTURE_PROBE_1_WARMUP_MS);
   probe1MoisturePercent = soilMoisturePercentFromRaw(probe1RawValue, PROBE_1_AIR_VALUE, PROBE_1_WATER_VALUE);
-  probe2RawValue = readPoweredAnalogRaw(SOIL_MOISTURE_PROBE_2_POWER_PIN, SOIL_MOISTURE_PROBE_2_AO_PIN);
+  probe2RawValue = readPoweredAnalogRaw(SOIL_MOISTURE_PROBE_2_POWER_PIN, SOIL_MOISTURE_PROBE_2_AO_PIN, SOIL_MOISTURE_PROBE_2_WARMUP_MS);
   probe2MoisturePercent = soilMoisturePercentFromRaw(probe2RawValue, PROBE_2_AIR_VALUE, PROBE_2_WATER_VALUE);
 #endif
 
 #if ENABLE_SOIL_MOISTURE_CAPACITIVE
-  capacitiveRawValue = readPoweredAnalogRaw(SOIL_MOISTURE_CAPACITIVE_POWER_PIN, SOIL_MOISTURE_CAPACITIVE_AO_PIN);
+  capacitiveRawValue = readPoweredAnalogRaw(SOIL_MOISTURE_CAPACITIVE_POWER_PIN, SOIL_MOISTURE_CAPACITIVE_AO_PIN, SOIL_MOISTURE_CAPACITIVE_WARMUP_MS);
   capacitiveMoisturePercent = soilMoisturePercentFromRaw(capacitiveRawValue, CAPACITIVE_AIR_VALUE, CAPACITIVE_WATER_VALUE);
 #endif
 

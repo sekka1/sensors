@@ -22,4 +22,27 @@ inline int calculateMoisturePercent(int rawValue, int airValue, int waterValue) 
   return clampPercent(percent);
 }
 
+// Human-readable WiFi signal quality from RSSI (dBm)
+inline const char* rssiQualityLabel(int rssiDbm) {
+  if (rssiDbm >= -60) {
+    return "excellent";
+  }
+  if (rssiDbm >= -70) {
+    return "good";
+  }
+  if (rssiDbm >= -80) {
+    return "marginal";
+  }
+  return "poor";
+}
+
+// True when WiFi has been down continuously for at least thresholdMs.
+// lostSinceMs == 0 means WiFi is currently up. Unsigned math is millis()-rollover safe.
+inline bool shouldRestartForWifiLoss(unsigned long lostSinceMs, unsigned long nowMs, unsigned long thresholdMs) {
+  if (lostSinceMs == 0) {
+    return false;
+  }
+  return (nowMs - lostSinceMs) >= thresholdMs;
+}
+
 #endif

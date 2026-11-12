@@ -153,12 +153,27 @@ int readPoweredAnalogRaw(int powerPin, int analogPin, unsigned long warmupMs) {
 }
 #endif
 
+// WiFi TX power level (wifi_power_t); override in platformio.ini. Too high can brown out weak supplies.
+#ifndef WIFI_TX_POWER
+  #define WIFI_TX_POWER WIFI_POWER_15dBm
+#endif
+
+// Reboot if WiFi stays down this long after boot (ms); override in platformio.ini
+#ifndef WIFI_LOSS_RESTART_MS
+  #define WIFI_LOSS_RESTART_MS 120000UL
+#endif
+unsigned long wifiLostSinceMillis = 0;  // 0 = WiFi currently up
+
+// True while associated with the AP (before/after DHCP), so a retry never aborts it
+volatile bool wifiAssociated = false;
+
 void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
   switch (event) {
     case ARDUINO_EVENT_WIFI_STA_START:
       Serial.println("[WiFi] Station Started");
       break;
     case ARDUINO_EVENT_WIFI_STA_CONNECTED:
+      wifiAssociated = true;
       Serial.println("[WiFi] Connected to Access Point!");
       break;
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
@@ -166,6 +181,7 @@ void WiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
       Serial.println(WiFi.localIP());
       break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
+      wifiAssociated = false;
       Serial.print("[WiFi] Disconnected! Reason code: ");
       Serial.println(info.wifi_sta_disconnected.reason);
       break;
@@ -252,10 +268,24 @@ void setup() {
   WiFi.setSleep(false);
   // 2. Moderate TX power. Too low (8.5dBm) weakens the directed probe requests
   //    needed to find a hidden SSID, causing reason 201 (NO_AP_FOUND).
-  WiFi.setTxPower(WIFI_POWER_15dBm);
+  WiFi.setTxPower(WIFI_TX_POWER);
   // 3. Scan all channels and prefer the strongest AP when several share the SSID
   WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
   WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+
+#if WIFI_SCAN_DIAGNOSTICS
+  // A hidden AP appears with an empty SSID but still reports its channel and RSSI
+  Serial.println("[WiFi] Scanning nearby networks...");
+  const int found = WiFi.scanNetworks(false, true);
+  for (int i = 0; i < found; i++) {
+    Serial.printf("[WiFi]  %2d: %-24s RSSI %d dBm (%s) ch %d  %s%s\n", i + 1,
+                  WiFi.SSID(i).length() ? WiFi.SSID(i).c_str() : "<hidden>",
+                  WiFi.RSSI(i), rssiQualityLabel(WiFi.RSSI(i)), WiFi.channel(i),
+                  WiFi.BSSIDstr(i).c_str(),
+                  WiFi.SSID(i) == ssid ? "  <== TARGET" : "");
+  }
+  WiFi.scanDelete();
+#endif
 
   Serial.print("Connecting to ");
   Serial.println(ssid);
@@ -273,14 +303,33 @@ void setup() {
     Serial.printf("\n[WiFi] Attempt %d/%d\n", attempt, MAX_ATTEMPTS);
     WiFi.disconnect(true);
     delay(200);
-#ifdef WIFI_CHANNEL
+#if defined(WIFI_CHANNEL) && defined(WIFI_BSSID_BYTES)
+    // Pinning channel + BSSID avoids relying on a hidden SSID's probe response.
+    // If the pinned AP never works (e.g. router replaced), fall back to channel only.
+    static const uint8_t wifiBssid[6] = {WIFI_BSSID_BYTES};
+    if (attempt <= MAX_ATTEMPTS / 2) {
+      WiFi.begin(ssid, password, WIFI_CHANNEL, wifiBssid);
+    } else {
+      WiFi.begin(ssid, password, WIFI_CHANNEL);
+    }
+#elif defined(WIFI_CHANNEL)
     // Fixed channel skips the all-channel scan: much more reliable for hidden SSIDs
     WiFi.begin(ssid, password, WIFI_CHANNEL);
 #else
     WiFi.begin(ssid, password);
 #endif
     uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < ATTEMPT_TIMEOUT_MS) {
+    // Once associated, keep waiting (up to the IP timeout) for DHCP instead of aborting
+    const uint32_t IP_TIMEOUT_MS = 15000;
+    uint32_t associatedAt = 0;
+    while (WiFi.status() != WL_CONNECTED) {
+      if (wifiAssociated) {
+        if (associatedAt == 0) associatedAt = millis();
+        if (millis() - associatedAt > IP_TIMEOUT_MS) break;
+      } else {
+        associatedAt = 0;
+        if (millis() - start > ATTEMPT_TIMEOUT_MS) break;
+      }
       delay(500);
       Serial.print(".");
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));
@@ -289,6 +338,9 @@ void setup() {
 
   digitalWrite(LED_PIN, LOW); 
   Serial.println("\n[WiFi] Connection Complete!");
+  Serial.printf("[WiFi] Signal: %d dBm (%s), channel %d, BSSID %s\n",
+                WiFi.RSSI(), rssiQualityLabel(WiFi.RSSI()), WiFi.channel(),
+                WiFi.BSSIDstr().c_str());
 
   // Force the ESP32 to query Cloudflare's DNS
   IPAddress dns1(1, 1, 1, 1);
@@ -369,7 +421,7 @@ bool postSensorData(
   payload += "\"" + String(soilMoistureOutputName) + "_probe_2_moisture_percent\":" + String(probe2MoisturePercent) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_probe_2_power_pin\":" + String(SOIL_MOISTURE_PROBE_2_POWER_PIN) + ",";
   payload += "\"" + String(soilMoistureOutputName) + "_probe_2_ao_pin\":" + String(SOIL_MOISTURE_PROBE_2_AO_PIN) + ",";
-  payload += "\"" + String(soilMoistureOutputName) + "_reading_time_ms\":" + String(millis()) + ",";
+  payload += "\"" + String(soilMoistureOutputName) + "_uptime_ms\":" + String(millis()) + ",";
 #endif
 
 #if ENABLE_SOIL_MOISTURE_CAPACITIVE
@@ -381,7 +433,7 @@ bool postSensorData(
   payload += "\"" + String(soilMoistureCapacitiveOutputName) + "_calibrated_percent\":" + String(capacitiveMoisturePercent) + ",";
   payload += "\"" + String(soilMoistureCapacitiveOutputName) + "_power_pin\":" + String(SOIL_MOISTURE_CAPACITIVE_POWER_PIN) + ",";
   payload += "\"" + String(soilMoistureCapacitiveOutputName) + "_ao_pin\":" + String(SOIL_MOISTURE_CAPACITIVE_AO_PIN) + ",";
-  payload += "\"" + String(soilMoistureCapacitiveOutputName) + "_reading_time_ms\":" + String(millis()) + ",";
+  payload += "\"" + String(soilMoistureCapacitiveOutputName) + "_uptime_ms\":" + String(millis()) + ",";
 #endif
 
   payload += "\"timestamp\":" + String(timestamp);
@@ -502,12 +554,27 @@ void sendCurrentSensorReading() {
 
 void loop() {
   if (WiFi.status() == WL_CONNECTED) {
+    wifiLostSinceMillis = 0;
     Serial.print("Signal Strength (RSSI): ");
     Serial.print(WiFi.RSSI());
-    Serial.println(" dBm");
+    Serial.print(" dBm (");
+    Serial.print(rssiQualityLabel(WiFi.RSSI()));
+    Serial.println(")");
 
     if (lastSensorSendMillis == 0 || millis() - lastSensorSendMillis >= SENSOR_SEND_INTERVAL_MS) {
       sendCurrentSensorReading();
+    }
+  } else {
+    // Give the driver's auto-reconnect a grace period, then reboot to recover
+    if (wifiLostSinceMillis == 0) {
+      wifiLostSinceMillis = millis();
+      if (wifiLostSinceMillis == 0) wifiLostSinceMillis = 1;
+      Serial.println("[WiFi] Connection lost, waiting for auto-reconnect...");
+    }
+    if (shouldRestartForWifiLoss(wifiLostSinceMillis, millis(), WIFI_LOSS_RESTART_MS)) {
+      Serial.println("[WiFi] Still down, restarting...");
+      Serial.flush();
+      ESP.restart();
     }
   }
   delay(5000);
